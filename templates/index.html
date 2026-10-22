@@ -1,0 +1,623 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESPORTS | Control Center</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-icon"><i class="bi bi-controller"></i></div>
+      <div><strong>ESPORTS</strong><small>CONTROL CENTER</small></div>
+    </div>
+    <div class="nav-label">WORKSPACE</div>
+    <button class="nav-link active" data-page="dashboard"><i class="bi bi-grid-1x2"></i> Dashboard</button>
+    <button class="nav-link" data-page="reports"><i class="bi bi-bar-chart-line"></i> Report Builder</button>
+    <button class="nav-link" data-page="tables"><i class="bi bi-database"></i> Database Explorer</button>
+    <div class="nav-label mt-4">QUICK ACCESS</div>
+    <div id="quickTables" class="quick-tables"></div>
+    <div class="sidebar-footer"><span class="status-dot"></span><span id="dbStatus">Checking database...</span><small>COCKROACHDB</small></div>
+  </aside>
+
+  <main class="main-content">
+    <header class="topbar">
+      <div class="d-flex align-items-center gap-3">
+        <button class="icon-button mobile-menu" id="mobileMenu"><i class="bi bi-list"></i></button>
+        <div><div class="eyebrow">TOURNAMENT OPERATIONS</div><h1 id="pageTitle">Dashboard Overview</h1></div>
+      </div>
+      <div class="topbar-right">
+        <span class="live-pill"><span class="status-dot"></span> DATABASE CONNECTED</span>
+        <button class="icon-button" id="refreshBtn" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+      </div>
+    </header>
+    <div id="toastArea" class="toast-area"></div>
+
+    <!-- DASHBOARD -->
+    <section class="page-section active" id="page-dashboard">
+      <div class="welcome-row">
+        <div><h2>Tournament overview</h2><p>Performance insights calculated from your database.</p></div>
+        <span class="updated-label" id="lastUpdated">Loading insights...</span>
+      </div>
+
+      <div class="metric-grid">
+        <article class="metric-card"><div class="metric-top"><span>Active Tournaments</span><i class="bi bi-trophy purple metric-icon"></i></div><div class="metric-value" id="activeTournaments">—</div><p>Marked active in the database</p></article>
+        <article class="metric-card"><div class="metric-top"><span>Upcoming Matches</span><i class="bi bi-calendar-event blue metric-icon"></i></div><div class="metric-value" id="upcomingMatches">—</div><p>Scheduled matches not completed</p></article>
+        <article class="metric-card"><div class="metric-top"><span>Match Completion</span><i class="bi bi-check-circle green metric-icon"></i></div><div class="metric-value"><span id="completionRate">—</span><small>%</small></div><div class="progress-track"><div class="progress-fill" id="completionBar"></div></div><p><span id="completedMatches">0</span> of <span id="totalMatches">0</span> matches completed</p></article>
+        <article class="metric-card"><div class="metric-top"><span>Total Prize Pool</span><i class="bi bi-cash-stack orange metric-icon"></i></div><div class="metric-value money-value" id="totalPrizePool">—</div><p>Sum of recorded prize amounts</p></article>
+      </div>
+
+      <div class="metric-grid secondary-metrics">
+        <article class="mini-metric"><i class="bi bi-people purple"></i><div><span>Registered Teams</span><strong id="registeredTeams">—</strong></div></article>
+        <article class="mini-metric"><i class="bi bi-controller blue"></i><div><span>Games Tracked</span><strong id="gamesTracked">—</strong></div></article>
+        <article class="mini-metric"><i class="bi bi-calendar2-week green"></i><div><span>Total Matches</span><strong id="matchesTracked">—</strong></div></article>
+      </div>
+
+      <div class="content-grid charts-grid">
+        <article class="panel">
+          <div class="panel-heading"><div><h3>Team performance</h3><p>Compare recorded wins and losses</p></div><span class="panel-badge">SQL JOIN + GROUP BY</span></div>
+          <div class="chart-container"><canvas id="teamChart"></canvas></div>
+          <div id="teamChartEmpty" class="empty-state d-none">Team win/loss data is unavailable until match results are recorded.</div>
+        </article>
+        <article class="panel">
+          <div class="panel-heading"><div><h3>Match outcomes</h3><p>Distribution of match statuses and results</p></div><span class="panel-badge">SQL AGGREGATION</span></div>
+          <div class="pie-container"><canvas id="outcomeChart"></canvas></div>
+          <div id="outcomeChartEmpty" class="empty-state d-none">No outcome data available.</div>
+        </article>
+      </div>
+
+      <div class="content-grid insight-grid">
+        <article class="panel insight-card"><div class="insight-icon purple"><i class="bi bi-trophy"></i></div><div><span>Leading team</span><strong id="leadingTeam">—</strong><p id="leadingTeamDetail">Calculated from recorded wins</p></div></article>
+        <article class="panel insight-card"><div class="insight-icon blue"><i class="bi bi-controller"></i></div><div><span>Most-played game</span><strong id="topGame">—</strong><p id="topGameDetail">Based on associated matches</p></div></article>
+      </div>
+
+      <div class="content-grid lower-grid">
+        <article class="panel">
+          <div class="panel-heading"><div><h3>Upcoming fixtures</h3><p>Next scheduled matches</p></div><button class="text-button" data-page-link="tables" data-table="matches">Manage matches ↗</button></div>
+          <div class="table-responsive"><table class="table data-table"><thead><tr><th>Match</th><th>Date</th><th>Stage</th><th>Status / Winner</th></tr></thead><tbody id="upcomingBody"><tr><td colspan="4">Loading...</td></tr></tbody></table></div>
+        </article>
+        <article class="panel">
+          <div class="panel-heading"><div><h3>Team leaderboard</h3><p>Ranked by recorded wins</p></div></div>
+          <div id="leaderboard" class="leaderboard-list">Loading leaderboard...</div>
+        </article>
+      </div>
+    </section>
+
+    <!-- CUSTOM REPORT BUILDER -->
+    <section class="page-section" id="page-reports">
+      <div class="welcome-row"><div><h2>Build your own report</h2><p>Select what you need. The application creates the SQL automatically.</p></div></div>
+      <div class="info-banner"><i class="bi bi-lightbulb"></i><div><strong>No manual SQL required</strong><p>Choose a table, columns, filters, and calculations. Results are generated from your actual database.</p></div></div>
+
+      <div class="panel">
+        <div class="panel-heading"><div><h3>Report configuration</h3><p>Configure your report below</p></div><span class="panel-badge">VISUAL QUERY BUILDER</span></div>
+        <form id="reportForm" class="builder-form">
+          <div class="builder-grid">
+            <div class="form-field"><label for="reportTable">Data area</label><select class="form-select" id="reportTable" required></select></div>
+            <div class="form-field"><label for="reportAggregate">Calculation</label><select class="form-select" id="reportAggregate"><option value="none">Show records</option><option value="count">Count records</option><option value="sum">Sum</option><option value="avg">Average</option><option value="min">Minimum</option><option value="max">Maximum</option></select></div>
+            <div class="form-field" id="aggregateColumnWrap"><label for="aggregateColumn">Calculate column</label><select class="form-select" id="aggregateColumn"></select></div>
+            <div class="form-field"><label for="groupBy">Group results by</label><select class="form-select" id="groupBy"></select></div>
+            <div class="form-field"><label for="sortBy">Sort by</label><select class="form-select" id="sortBy"></select></div>
+            <div class="form-field"><label for="sortOrder">Sort direction</label><select class="form-select" id="sortOrder"><option value="DESC">Highest first</option><option value="ASC">Lowest / A–Z first</option></select></div>
+          </div>
+
+          <div class="builder-section-title"><div><h3>Columns to display</h3><p>Select one or more fields.</p></div></div>
+          <div id="columnChoices" class="column-choices">Loading columns...</div>
+
+          <div class="builder-section-title"><div><h3>Filters</h3><p>Optional conditions to narrow the results.</p></div><button class="secondary-button" id="addFilter" type="button"><i class="bi bi-plus-lg"></i> Add filter</button></div>
+          <div id="filterList" class="report-filters"></div>
+
+          <div class="builder-actions"><button type="button" class="secondary-button" id="resetReport">Reset</button><button type="submit" class="primary-button" id="runReport"><i class="bi bi-play-fill"></i> Generate report</button></div>
+        </form>
+      </div>
+
+      <div class="panel report-output mt-4">
+        <div class="panel-heading"><div><h3>Report results</h3><p id="reportSummary">Generate a report to see the results.</p></div><button type="button" class="secondary-button" id="exportReport"><i class="bi bi-download"></i> Export CSV</button></div>
+        <div class="table-responsive"><table class="table data-table"><thead id="reportHead"><tr><th>Results will appear here</th></tr></thead><tbody id="reportBody"><tr><td class="empty-state">Configure your report above.</td></tr></tbody></table></div>
+        <details class="generated-sql"><summary>View generated SQL (read-only)</summary><pre id="generatedSql">SQL will appear here after generating a report.</pre></details>
+      </div>
+    </section>
+
+    <!-- DATABASE EXPLORER -->
+    <section class="page-section" id="page-tables">
+      <div class="welcome-row"><div><h2>Database Explorer</h2><p>Browse, search, add, edit, and delete records.</p></div><button class="primary-button" id="addRecordBtn"><i class="bi bi-plus-lg"></i> Add record</button></div>
+      <div class="explorer-layout">
+        <aside class="panel table-picker"><div class="picker-heading">DATABASE TABLES <span id="tableCount" class="count-badge">0</span></div><input id="tableFilter" class="form-control mb-2" placeholder="Find a table..."><div id="tableList" class="table-list"></div></aside>
+        <div class="panel data-panel">
+          <div class="panel-heading explorer-heading"><div><h3 id="selectedTableTitle">Select a table</h3><p id="selectedTableSubtitle">Choose a table to view records.</p></div><button class="secondary-button" id="exportTable"><i class="bi bi-download"></i> Export CSV</button></div>
+          <div class="data-toolbar"><input id="rowSearch" class="form-control" placeholder="Search all columns..."><span id="recordCount">0 records</span></div>
+          <div class="table-responsive data-table-wrap"><table class="table data-table"><thead id="recordsHead"></thead><tbody id="recordsBody"><tr><td>Select a table.</td></tr></tbody></table></div>
+          <div class="pagination-row"><span id="pageInfo">Page 1</span><div class="d-flex gap-2"><button class="secondary-button" id="prevPage">Previous</button><button class="secondary-button" id="nextPage">Next</button></div></div>
+        </div>
+      </div>
+    </section>
+    <footer class="app-footer">ESPORTS CONTROL CENTER <span>Flask · CockroachDB · SQL Analytics</span></footer>
+  </main>
+</div>
+
+<!-- Record modal -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 id="modalTitle" class="modal-title">Add record</h5><p class="modal-subtitle">Fill in the record details.</p></div><button class="btn-close" data-bs-dismiss="modal"></button></div>
+    <form id="recordForm"><div class="modal-body"><div class="form-grid" id="recordFields"></div></div><div class="modal-footer"><button type="button" class="secondary-button" data-bs-dismiss="modal">Cancel</button><button class="primary-button" type="submit" id="saveRecord">Save record</button></div></form>
+  </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const S = {
+    tables: [], table: null, schema: null, rows: [], total: 0,
+    page: 0, limit: 50, search: "", editing: null,
+    modal: null, teamChart: null, outcomeChart: null,
+    reportOptions: [], reportRows: []
+  };
+
+  const esc = v => String(v ?? "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const nice = s => String(s).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const num = n => Number(n || 0).toLocaleString();
+
+  async function api(url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: {"Content-Type": "application/json", ...(options.headers || {})}
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Request failed");
+    return data;
+  }
+
+  function toast(message, error = false) {
+    const el = document.createElement("div");
+    el.className = "app-toast" + (error ? " error" : "");
+    el.textContent = message;
+    $("toastArea").appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  function page(name) {
+    document.querySelectorAll(".page-section").forEach(el =>
+      el.classList.toggle("active", el.id === "page-" + name));
+    document.querySelectorAll(".nav-link").forEach(el =>
+      el.classList.toggle("active", el.dataset.page === name));
+    $("pageTitle").textContent = ({dashboard:"Dashboard Overview",reports:"Custom Report Builder",tables:"Database Explorer"})[name];
+    $("sidebar").classList.remove("mobile-open");
+    if (name === "dashboard") loadDashboard();
+    if (name === "reports") initReportBuilder();
+    if (name === "tables") loadTables();
+  }
+
+  function first(row, keys) {
+    for (const k of keys) if (row?.[k] !== undefined && row[k] !== null) return row[k];
+    return "—";
+  }
+
+  function fmtDate(v) {
+    if (!v || v === "—") return "—";
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+  }
+
+  async function loadDashboard() {
+    try {
+      const d = await api("/api/dashboard"), m = d.metrics;
+      $("activeTournaments").textContent = num(m.active_tournaments);
+      $("upcomingMatches").textContent = num(m.upcoming_matches);
+      $("completionRate").textContent = Number(m.completion_rate || 0);
+      $("completionBar").style.width = Math.min(100, Number(m.completion_rate || 0)) + "%";
+      $("completedMatches").textContent = num(m.completed_matches);
+      $("totalMatches").textContent = num(m.total_matches);
+      $("registeredTeams").textContent = num(m.registered_teams);
+      $("gamesTracked").textContent = num(m.games_tracked);
+      $("matchesTracked").textContent = num(m.total_matches);
+      $("totalPrizePool").textContent = Number(m.total_prize_pool || 0).toLocaleString();
+      $("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString();
+
+      renderTeamChart(d.team_performance || []);
+      renderOutcomeChart(d.match_outcomes || []);
+      renderLeaderboard(d.leaderboard || []);
+      renderFixtures(d.upcoming_matches || []);
+
+      const leader = (d.leaderboard || [])[0];
+      $("leadingTeam").textContent = leader ? leader.team_name : "No results yet";
+      $("leadingTeamDetail").textContent = leader ? `${leader.wins} recorded win(s)` : "Record match results to calculate rankings";
+      const game = (d.game_activity || [])[0];
+      $("topGame").textContent = game ? game.game_name : "No game data";
+      $("topGameDetail").textContent = game ? `${game.matches} associated match(es)` : "Check game/tournament/stage relationships";
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function renderTeamChart(rows) {
+    if (S.teamChart) S.teamChart.destroy();
+    const canvas = $("teamChart");
+    if (!rows.length) {
+      canvas.classList.add("d-none"); $("teamChartEmpty").classList.remove("d-none"); return;
+    }
+    canvas.classList.remove("d-none"); $("teamChartEmpty").classList.add("d-none");
+    S.teamChart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: rows.map(r => r.team_name),
+        datasets: [
+          {label:"Wins", data:rows.map(r => Number(r.wins || 0)), backgroundColor:"#6558d3", borderRadius:5},
+          {label:"Losses", data:rows.map(r => Number(r.losses || 0)), backgroundColor:"#f19a70", borderRadius:5}
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:"bottom"}},
+        scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}
+      }
+    });
+  }
+
+  function renderOutcomeChart(rows) {
+    if (S.outcomeChart) S.outcomeChart.destroy();
+    const canvas = $("outcomeChart");
+    const valid = rows.filter(r => Number(r.total) > 0);
+    if (!valid.length) {
+      canvas.classList.add("d-none"); $("outcomeChartEmpty").classList.remove("d-none"); return;
+    }
+    canvas.classList.remove("d-none"); $("outcomeChartEmpty").classList.add("d-none");
+    S.outcomeChart = new Chart(canvas, {
+      type:"pie",
+      data:{
+        labels:valid.map(r => r.outcome),
+        datasets:[{data:valid.map(r => Number(r.total)), backgroundColor:["#6558d3","#27ae86","#f1a05e","#7ca7e8","#dc6c82"], borderWidth:2, borderColor:"#fff"}]
+      },
+      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:"bottom"}}}
+    });
+  }
+
+  function renderLeaderboard(rows) {
+    $("leaderboard").innerHTML = rows.length ? rows.map((r, i) =>
+      `<div class="leader-row"><span class="rank-number">${i+1}</span><span class="team-avatar">${esc(String(r.team_name).slice(0,1))}</span><strong>${esc(r.team_name)}</strong><span class="wins-pill">${num(r.wins)} wins</span></div>`
+    ).join("") : '<div class="empty-state">No team win data yet.</div>';
+  }
+
+  function renderFixtures(rows) {
+    $("upcomingBody").innerHTML = rows.length ? rows.map(r =>
+      `<tr><td>${esc(first(r,["match_id","id"]))}</td><td>${esc(fmtDate(first(r,["match_date","scheduled_at","start_time"])))}</td><td>${esc(first(r,["stage_id","stage_name"]))}</td><td>${esc(first(r,["status","match_status","winner_team_id"]))}</td></tr>`
+    ).join("") : '<tr><td colspan="4" class="empty-state">No upcoming fixtures found.</td></tr>';
+  }
+
+  // ---------------- REPORT BUILDER ----------------
+
+  async function initReportBuilder() {
+    try {
+      if (!S.reportOptions.length) S.reportOptions = await api("/api/report-options");
+      const select = $("reportTable");
+      const old = select.value;
+      select.innerHTML = S.reportOptions.map(t =>
+        `<option value="${esc(t.table)}">${esc(nice(t.table))}</option>`
+      ).join("");
+      if (old && S.reportOptions.some(t => t.table === old)) select.value = old;
+
+      if (!select.dataset.ready) {
+        select.addEventListener("change", buildReportFields);
+        $("reportAggregate").addEventListener("change", updateAggregate);
+        $("addFilter").addEventListener("click", addFilter);
+        $("reportForm").addEventListener("submit", runReport);
+        $("resetReport").addEventListener("click", resetReport);
+        $("exportReport").addEventListener("click", exportReport);
+        select.dataset.ready = "yes";
+      }
+      buildReportFields();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function selectedReportTable() {
+    return S.reportOptions.find(t => t.table === $("reportTable").value);
+  }
+
+  function buildReportFields() {
+    const table = selectedReportTable();
+    if (!table) return;
+    const cols = table.columns;
+    $("columnChoices").innerHTML = cols.map((c, i) =>
+      `<label class="column-choice"><input type="checkbox" name="reportColumn" value="${esc(c.name)}" ${i === 0 ? "checked" : ""}><span>${esc(nice(c.name))}</span><small>${esc(c.type)}</small></label>`
+    ).join("");
+
+    const options = cols.map(c => `<option value="${esc(c.name)}">${esc(nice(c.name))}</option>`).join("");
+    $("aggregateColumn").innerHTML = options;
+    $("groupBy").innerHTML = '<option value="">No grouping</option>' + options;
+    $("sortBy").innerHTML = '<option value="">Default order</option>' + options + '<option value="report_value">Calculated value</option>';
+    $("filterList").innerHTML = "";
+    updateAggregate();
+  }
+
+  function updateAggregate() {
+    const agg = $("reportAggregate").value;
+    $("aggregateColumnWrap").style.display = ["none","count"].includes(agg) ? "none" : "flex";
+  }
+
+  function addFilter() {
+    const table = selectedReportTable();
+    if (!table) return;
+    const row = document.createElement("div");
+    row.className = "filter-row";
+    row.innerHTML = `
+      <select class="form-select filter-column">${table.columns.map(c=>`<option value="${esc(c.name)}">${esc(nice(c.name))}</option>`).join("")}</select>
+      <select class="form-select filter-operator">
+        <option value="=">Equals</option><option value="!=">Not equal</option>
+        <option value="contains">Contains</option><option value=">">Greater than</option>
+        <option value=">=">Greater/equal</option><option value="<">Less than</option>
+        <option value="<=">Less/equal</option><option value="is_null">Is empty</option>
+        <option value="is_not_null">Is not empty</option>
+      </select>
+      <input class="form-control filter-value" placeholder="Filter value">
+      <button type="button" class="row-action remove-filter" title="Remove filter"><i class="bi bi-trash"></i></button>`;
+    row.querySelector(".filter-operator").addEventListener("change", e => {
+      const input = row.querySelector(".filter-value");
+      input.disabled = ["is_null","is_not_null"].includes(e.target.value);
+      if (input.disabled) input.value = "";
+    });
+    row.querySelector(".remove-filter").addEventListener("click", () => row.remove());
+    $("filterList").appendChild(row);
+  }
+
+  async function runReport(e) {
+    e.preventDefault();
+    const columns = [...document.querySelectorAll('input[name="reportColumn"]:checked')].map(x => x.value);
+    if (!columns.length) return toast("Select at least one display column.", true);
+    const filters = [...$("filterList").querySelectorAll(".filter-row")].map(row => ({
+      column:row.querySelector(".filter-column").value,
+      operator:row.querySelector(".filter-operator").value,
+      value:row.querySelector(".filter-value").value
+    }));
+    const payload = {
+      table:$("reportTable").value, columns,
+      aggregate:$("reportAggregate").value,
+      aggregate_column:$("aggregateColumn").value,
+      group_by:$("groupBy").value,
+      sort_by:$("sortBy").value,
+      sort_order:$("sortOrder").value, filters
+    };
+    $("runReport").disabled = true;
+    try {
+      const result = await api("/api/custom-report", {method:"POST",body:JSON.stringify(payload)});
+      S.reportRows = result.rows || [];
+      renderReportRows(S.reportRows);
+      $("reportSummary").textContent = `${result.count} result rows · ${nice(payload.table)}`;
+      $("generatedSql").textContent = result.sql;
+      toast("Report generated successfully.");
+    } catch (err) { toast(err.message, true); }
+    finally { $("runReport").disabled = false; }
+  }
+
+  function renderReportRows(rows) {
+    if (!rows.length) {
+      $("reportHead").innerHTML = "<tr><th>Report results</th></tr>";
+      $("reportBody").innerHTML = '<tr><td class="empty-state">No matching records found.</td></tr>';
+      return;
+    }
+    const cols = Object.keys(rows[0]);
+    $("reportHead").innerHTML = "<tr>" + cols.map(c=>`<th>${esc(nice(c))}</th>`).join("") + "</tr>";
+    $("reportBody").innerHTML = rows.map(r => "<tr>" + cols.map(c=>`<td>${esc(r[c] ?? "—")}</td>`).join("") + "</tr>").join("");
+  }
+
+  function resetReport() {
+    $("reportAggregate").value = "none";
+    $("sortOrder").value = "DESC";
+    buildReportFields();
+    $("reportSummary").textContent = "Generate a report to see the results.";
+    $("generatedSql").textContent = "SQL will appear here after generating a report.";
+    S.reportRows = [];
+  }
+
+  function exportReport() {
+    if (!S.reportRows.length) return toast("Generate a report first.", true);
+    const cols = Object.keys(S.reportRows[0]);
+    const cv = v => '"' + String(v ?? "").replace(/"/g,'""') + '"';
+    const csv = [cols.map(cv).join(","), ...S.reportRows.map(r=>cols.map(c=>cv(r[c])).join(","))].join("\r\n");
+    downloadCsv(csv, "custom-report.csv");
+  }
+
+  // ---------------- DATABASE EXPLORER ----------------
+
+  async function loadTables() {
+    try {
+      S.tables = (await api("/api/tables")).map(t => t.table_name);
+      $("tableCount").textContent = S.tables.length;
+      renderTableList();
+      $("quickTables").innerHTML = S.tables.slice(0,8).map(t =>
+        `<button class="quick-table" data-select-table="${esc(t)}"><i class="bi bi-table"></i>${esc(nice(t))}</button>`
+      ).join("");
+      if (!S.table && S.tables.length) await selectTable(S.tables.includes("matches") ? "matches" : S.tables[0]);
+      else if (S.table) await selectTable(S.table);
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function renderTableList() {
+    const filter = ($("tableFilter").value || "").toLowerCase();
+    $("tableList").innerHTML = S.tables.filter(t=>t.toLowerCase().includes(filter)).map(t =>
+      `<button class="table-list-item ${t===S.table?"selected":""}" data-select-table="${esc(t)}"><i class="bi bi-table"></i><span>${esc(nice(t))}</span></button>`
+    ).join("");
+  }
+
+  async function selectTable(table) {
+    S.table = table; S.page = 0; S.search = ""; $("rowSearch").value = "";
+    renderTableList();
+    $("selectedTableTitle").textContent = nice(table);
+    S.schema = await api(`/api/schema/${encodeURIComponent(table)}`);
+    $("selectedTableSubtitle").textContent = `${S.schema.columns.length} columns`;
+    await loadRows();
+  }
+
+  async function loadRows() {
+    if (!S.table) return;
+    try {
+      const q = new URLSearchParams({limit:S.limit,offset:S.page*S.limit,search:S.search});
+      const d = await api(`/api/data/${encodeURIComponent(S.table)}?${q}`);
+      S.rows = d.rows; S.total = d.total;
+      renderRows();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function pkObject(row) {
+    const out = {};
+    S.schema.primary_keys.forEach(k=>out[k.column_name] = row[k.column_name]);
+    return out;
+  }
+
+  function renderRows() {
+    const cols = S.schema.columns.map(c=>c.column_name);
+    $("recordCount").textContent = `${num(S.total)} records`;
+    $("pageInfo").textContent = `Page ${S.page+1} · ${Math.min(S.page*S.limit+1,S.total)}–${Math.min((S.page+1)*S.limit,S.total)} of ${S.total}`;
+    $("prevPage").disabled = S.page===0;
+    $("nextPage").disabled = (S.page+1)*S.limit>=S.total;
+    $("recordsHead").innerHTML = "<tr>" + cols.map(c=>`<th>${esc(nice(c))}</th>`).join("") + "<th>Actions</th></tr>";
+    $("recordsBody").innerHTML = S.rows.length ? S.rows.map((r,i) =>
+      "<tr>" + cols.map(c=>`<td>${esc(r[c] ?? "—")}</td>`).join("") +
+      `<td><button class="row-action" data-edit="${i}" title="Edit"><i class="bi bi-pencil"></i></button> <button class="row-action delete" data-delete="${encodeURIComponent(JSON.stringify(pkObject(r)))}" title="Delete"><i class="bi bi-trash"></i></button></td></tr>`
+    ).join("") : `<tr><td colspan="${cols.length+1}" class="empty-state">No records found.</td></tr>`;
+  }
+
+  function inputType(c) {
+    const t = c.data_type.toLowerCase();
+    if (t.includes("bool")) return "checkbox";
+    if (t === "date") return "date";
+    if (t.includes("timestamp")) return "datetime-local";
+    if (/int|numeric|decimal|real|double/.test(t)) return "number";
+    return "text";
+  }
+
+  async function openRecord(row=null) {
+    S.editing = row;
+    $("modalTitle").textContent = row ? "Edit " + nice(S.table) : "Add to " + nice(S.table);
+    const pk = new Set(S.schema.primary_keys.map(k=>k.column_name));
+    const fk = S.schema.foreign_keys || [];
+    const container = $("recordFields");
+    container.innerHTML = "";
+
+    for (const c of S.schema.columns) {
+      const name = c.column_name;
+      if (!row && pk.has(name) && c.column_default) continue;
+      const wrap = document.createElement("div"); wrap.className = "form-field";
+      const label = document.createElement("label"); label.textContent = nice(name);
+      wrap.appendChild(label);
+      const foreign = fk.find(f=>f.column_name===name);
+      let input;
+
+      if (foreign) {
+        input = document.createElement("select"); input.className = "form-select";
+        input.innerHTML = '<option value="">Select related record</option>';
+        try {
+          const data = await api(`/api/data/${encodeURIComponent(foreign.referenced_table)}?limit=500`);
+          const schema = await api(`/api/schema/${encodeURIComponent(foreign.referenced_table)}`);
+          const labelCol = schema.columns.find(x=>/name|title/i.test(x.column_name))?.column_name || foreign.referenced_column;
+          data.rows.forEach(item=>{
+            const op = document.createElement("option");
+            op.value = item[foreign.referenced_column];
+            op.textContent = `${item[labelCol] ?? op.value} (ID: ${op.value})`;
+            if (row && String(row[name])===String(op.value)) op.selected = true;
+            input.appendChild(op);
+          });
+        } catch {}
+      } else {
+        input = document.createElement("input");
+        input.type = inputType(c);
+        input.className = input.type === "checkbox" ? "form-check-input" : "form-control";
+        if (input.type === "checkbox") input.checked = Boolean(row?.[name]);
+        else if (row?.[name] != null) input.value = input.type==="datetime-local" ? String(row[name]).slice(0,16) : row[name];
+        if (input.type==="number") input.step = "any";
+      }
+      input.dataset.column = name;
+      if (pk.has(name) && row) input.readOnly = true;
+      wrap.appendChild(input); container.appendChild(wrap);
+    }
+    S.modal.show();
+  }
+
+  async function saveRecord(e) {
+    e.preventDefault();
+    const payload = {};
+    $("recordFields").querySelectorAll("[data-column]").forEach(input=>{
+      payload[input.dataset.column] = input.type==="checkbox" ? input.checked : input.value;
+    });
+    const editing = S.editing;
+    if (editing) payload._primary_key = pkObject(editing);
+    try {
+      await api(`/api/data/${encodeURIComponent(S.table)}`, {
+        method:editing ? "PUT" : "POST", body:JSON.stringify(payload)
+      });
+      S.modal.hide(); toast("Record saved."); await loadRows(); await loadDashboard();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function deleteRecord(key) {
+    if (!confirm("Delete this record?")) return;
+    try {
+      await api(`/api/data/${encodeURIComponent(S.table)}`, {
+        method:"DELETE", body:JSON.stringify({_primary_key:JSON.parse(decodeURIComponent(key))})
+      });
+      toast("Record deleted."); await loadRows(); await loadDashboard();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function downloadCsv(csv, filename) {
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportTable() {
+    if (!S.rows.length) return toast("No rows to export.", true);
+    const cols = S.schema.columns.map(c=>c.column_name);
+    const cv = v => '"' + String(v ?? "").replace(/"/g,'""') + '"';
+    downloadCsv([cols.map(cv).join(","),...S.rows.map(r=>cols.map(c=>cv(r[c])).join(","))].join("\r\n"), `${S.table}.csv`);
+  }
+
+  document.addEventListener("click", async e=>{
+    const nav=e.target.closest("[data-page]");
+    if(nav){page(nav.dataset.page);return;}
+    const quick=e.target.closest("[data-select-table]");
+    if(quick){page("tables");await selectTable(quick.dataset.selectTable);return;}
+    const link=e.target.closest("[data-page-link]");
+    if(link){page(link.dataset.pageLink);if(link.dataset.table)await selectTable(link.dataset.table);return;}
+    const edit=e.target.closest("[data-edit]");
+    if(edit){await openRecord(S.rows[Number(edit.dataset.edit)]);return;}
+    const del=e.target.closest("[data-delete]");
+    if(del) await deleteRecord(del.dataset.delete);
+  });
+
+  $("mobileMenu").addEventListener("click",()=>$("sidebar").classList.toggle("mobile-open"));
+  $("refreshBtn").addEventListener("click",()=>{loadDashboard();loadHealth();});
+  $("tableFilter").addEventListener("input",renderTableList);
+  $("rowSearch").addEventListener("input",e=>{
+    clearTimeout(window.searchTimer);
+    window.searchTimer=setTimeout(()=>{S.search=e.target.value;S.page=0;loadRows();},300);
+  });
+  $("prevPage").addEventListener("click",()=>{if(S.page>0){S.page--;loadRows();}});
+  $("nextPage").addEventListener("click",()=>{if((S.page+1)*S.limit<S.total){S.page++;loadRows();}});
+  $("addRecordBtn").addEventListener("click",()=>S.table&&openRecord());
+  $("exportTable").addEventListener("click",exportTable);
+  $("recordForm").addEventListener("submit",saveRecord);
+  S.modal = new bootstrap.Modal($("recordModal"));
+
+  async function loadHealth() {
+    try {
+      await api("/api/health");
+      $("dbStatus").textContent = "Database connected";
+    } catch { $("dbStatus").textContent = "Database unavailable"; }
+  }
+
+  async function init() {
+    await loadHealth();
+    await loadTables();
+    await initReportBuilder();
+    await loadDashboard();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
